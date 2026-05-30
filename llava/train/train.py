@@ -39,13 +39,12 @@ import transformers
 import tokenizers
 import deepspeed
 
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModelForCausalLM
 from torch.utils.data import Dataset
 from llava.constants import IGNORE_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IMAGE_TOKEN_INDEX
 from llava.train.llava_trainer import LLaVATrainer
 
 from llava import conversation as conversation_lib
-from llava.model import *
 from llava.mm_utils import process_highres_image, process_anyres_image, process_anyres_image_nopad, process_highres_image_crop_split, tokenizer_image_token, process_anyres_video_nopad
 from llava.utils import rank0_print
 from llava.video_utils import VIDEO_READER_FUNCS
@@ -318,6 +317,25 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
         cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
         del state_dict
         trainer._save(output_dir, state_dict=cpu_state_dict)  # noqa
+
+
+def _resolve_vision_tower(model):
+    if hasattr(model, "get_vision_tower") and callable(model.get_vision_tower):
+        return model.get_vision_tower()
+    inner = model.get_model() if hasattr(model, "get_model") and callable(model.get_model) else model
+    if inner is not model and hasattr(inner, "get_vision_tower") and callable(inner.get_vision_tower):
+        return inner.get_vision_tower()
+    return getattr(inner, "vision_tower", None)
+
+
+def _resolve_image_processor(model, vision_tower):
+    if vision_tower is not None and getattr(vision_tower, "image_processor", None) is not None:
+        return vision_tower.image_processor
+    if getattr(model, "image_processor", None) is not None:
+        return model.image_processor
+    raise ValueError(
+        "Loaded model has no image_processor. Use a checkpoint that bundles vision preprocessing."
+    )
 
 
 def smart_tokenizer_and_embedding_resize(
@@ -1633,10 +1651,7 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
             model_args.mm_resampler_type is not None,
         ]
     ):
-        if "internlm2" in model_args.model_name_or_path.lower():
-            cfg_pretrained = AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
-        else:
-            cfg_pretrained = AutoConfig.from_pretrained(model_args.model_name_or_path)
+        cfg_pretrained = AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
     else:
         raise NotImplementedError(model_args)
     
@@ -1676,135 +1691,20 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
 
         customized_kwargs["config"] = cfg_pretrained
 
-    if model_args.model_class_name is not None:
-        raise NotImplementedError(model_args)
-        actual_model_class_name = f"{model_args.model_class_name}ForCausalLM"
-        model_class = getattr(transformers, actual_model_class_name)
-        rank0_print(f"Using model class {model_class} from {model_args.model_class_name}")
-        model = model_class.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
-            attn_implementation=training_args.attn_implementation,
-            torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-            low_cpu_mem_usage=False,
-            **customized_kwargs,
-        )
-    elif model_args.vision_tower is not None:
-        if "mixtral" in model_args.model_name_or_path.lower():
-            raise ValueError(f"I don't want model class {model_args}")
-            model = LlavaMixtralForCausalLM.from_pretrained(
-                model_args.model_name_or_path,
-                cache_dir=training_args.cache_dir,
-                attn_implementation=training_args.attn_implementation,
-                torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                low_cpu_mem_usage=False,
-                **customized_kwargs,
-            )
-            from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
+    rank0_print(f"Loading model from {model_args.model_name_or_path} with trust_remote_code=True")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_args.model_name_or_path,
+        cache_dir=training_args.cache_dir,
+        attn_implementation=training_args.attn_implementation,
+        torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
+        low_cpu_mem_usage=False,
+        trust_remote_code=True,
+        **customized_kwargs,
+    )
+    if "moe" in model_args.model_name_or_path.lower() or "A14B" in model_args.model_name_or_path:
+        from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
 
-            deepspeed.utils.set_z3_leaf_modules(model, [MixtralSparseMoeBlock])
-        elif "mistral" in model_args.model_name_or_path.lower() or "zephyr" in model_args.model_name_or_path.lower():
-            model = LlavaMistralForCausalLM.from_pretrained(
-                model_args.model_name_or_path,
-                cache_dir=training_args.cache_dir,
-                attn_implementation=training_args.attn_implementation,
-                torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                low_cpu_mem_usage=False,
-                **customized_kwargs,
-            )
-        elif (
-            "wizardlm-2" in model_args.model_name_or_path.lower()
-            or "vicuna" in model_args.model_name_or_path.lower()
-            or "llama" in model_args.model_name_or_path.lower()
-            # or "yi" in model_args.model_name_or_path.lower()
-            # or "nous-hermes" in model_args.model_name_or_path.lower()
-            # and "wizard-2" in model_args.model_name_or_path.lower()
-        ):
-            raise ValueError(f"I don't want model class {model_args}")
-            model = LlavaLlamaForCausalLM.from_pretrained(
-                model_args.model_name_or_path,
-                cache_dir=training_args.cache_dir,
-                attn_implementation=training_args.attn_implementation,
-                torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                low_cpu_mem_usage=False,
-                **customized_kwargs,
-            )
-        elif "qwen" in model_args.model_name_or_path.lower():
-            if "moe" in model_args.model_name_or_path.lower() or "A14B" in model_args.model_name_or_path:
-                model = LlavaQwenMoeForCausalLM.from_pretrained(
-                    model_args.model_name_or_path,
-                    cache_dir=training_args.cache_dir,
-                    attn_implementation=training_args.attn_implementation,
-                    torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                    low_cpu_mem_usage=False,
-                    **customized_kwargs,
-                )
-                from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
-
-                deepspeed.utils.set_z3_leaf_modules(model, [Qwen2MoeSparseMoeBlock])
-            elif overwrite_config['mm_llm_compress']:
-                model = LlavaQwenForCausalLM_Pdrop.from_pretrained(
-                    model_args.model_name_or_path,
-                    cache_dir=training_args.cache_dir,
-                    attn_implementation=training_args.attn_implementation,
-                    torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                    low_cpu_mem_usage=False,
-                    **customized_kwargs,
-                )
-            else:
-                model = LlavaQwenForCausalLM.from_pretrained(
-                    model_args.model_name_or_path,
-                    cache_dir=training_args.cache_dir,
-                    attn_implementation=training_args.attn_implementation,
-                    torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                    low_cpu_mem_usage=False,
-                    **customized_kwargs,
-                )
-
-        elif "internlm2" in model_args.model_name_or_path.lower():
-            if overwrite_config['mm_llm_compress']:
-                raise NotImplementedError
-                # model = LlavaInternLM2ForCausalLM_Pdrop.from_pretrained(
-                #     model_args.model_name_or_path,
-                #     cache_dir=training_args.cache_dir,
-                #     attn_implementation=training_args.attn_implementation,
-                #     torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                #     low_cpu_mem_usage=False,
-                #     **customized_kwargs,
-                # )
-            else:
-                model = LlavaInternLM2ForCausalLM.from_pretrained(
-                    model_args.model_name_or_path,
-                    cache_dir=training_args.cache_dir,
-                    attn_implementation=training_args.attn_implementation,
-                    torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                    low_cpu_mem_usage=False,
-                    **customized_kwargs,
-                )
-
-        elif "gemma" in model_args.model_name_or_path.lower():
-            raise ValueError(f"I don't want model class {model_args}")
-            model = LlavaGemmaForCausalLM.from_pretrained(
-                model_args.model_name_or_path,
-                cache_dir=training_args.cache_dir,
-                attn_implementation=training_args.attn_implementation,
-                torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-                low_cpu_mem_usage=False,
-                **customized_kwargs,
-            )
-        else:
-            raise ValueError(f"Unknown model class {model_args}")
-
-    else:
-        raise NotImplementedError
-        model = transformers.LlamaForCausalLM.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
-            attn_implementation=training_args.attn_implementation,
-            torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-            low_cpu_mem_usage=False,
-            **customized_kwargs,
-        )
+        deepspeed.utils.set_z3_leaf_modules(model, [Qwen2MoeSparseMoeBlock])
 
     rank0_print(f"Model config: {model.config}.")
     
@@ -1901,7 +1801,13 @@ def train(attn_implementation=None):
     if "mistral" in model_args.model_name_or_path.lower() or "mixtral" in model_args.model_name_or_path.lower() or "zephyr" in model_args.model_name_or_path.lower():
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_args.model_name_or_path, cache_dir=training_args.cache_dir, model_max_length=training_args.model_max_length, padding_side="left")
     elif "qwen" in model_args.model_name_or_path.lower():
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_args.model_name_or_path, cache_dir=training_args.cache_dir, model_max_length=training_args.model_max_length, padding_side="right")
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            cache_dir=training_args.cache_dir,
+            model_max_length=training_args.model_max_length,
+            padding_side="right",
+            trust_remote_code=True,
+        )
     elif "internlm2" in model_args.model_name_or_path.lower():
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_args.model_name_or_path, cache_dir=training_args.cache_dir, model_max_length=training_args.model_max_length, padding_side="right", trust_remote_code=True)
     elif (
@@ -1939,14 +1845,11 @@ def train(attn_implementation=None):
             raise NotImplementedError(f"Can't find your conv_templates: {model_args.version}")
             conversation_lib.default_conversation = conversation_lib.conv_templates["vicuna_v1"]
 
-    if model_args.vision_tower is not None:
-        model.get_model().initialize_vision_modules(model_args=model_args, fsdp=training_args.fsdp)
-
-        vision_tower = model.get_vision_tower()
+    vision_tower = _resolve_vision_tower(model)
+    if vision_tower is not None:
         vision_tower.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
 
-        # NOTE hard code
-        data_args.image_processor = vision_tower.image_processor
+        data_args.image_processor = _resolve_image_processor(model, vision_tower)
         data_args.is_multimodal = True
 
         model.config.image_aspect_ratio = data_args.image_aspect_ratio
@@ -2006,13 +1909,15 @@ def train(attn_implementation=None):
             if model_args.tune_mm_mlp_adapter or model_args.tune_mm_vision_resampler:
                 model.requires_grad_(False)
             if model_args.tune_mm_mlp_adapter:
-                for p in model.get_model().mm_projector.parameters():
-                    p.requires_grad = True
+                for name, param in model.named_parameters():
+                    if "mm_projector" in name:
+                        param.requires_grad = True
 
             model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
             if training_args.freeze_mm_mlp_adapter:
-                for p in model.get_model().mm_projector.parameters():
-                    p.requires_grad = False
+                for name, param in model.named_parameters():
+                    if "mm_projector" in name:
+                        param.requires_grad = False
 
             model.config.freeze_mm_vision_resampler = training_args.freeze_mm_vision_resampler
 
@@ -2029,12 +1934,15 @@ def train(attn_implementation=None):
             # Set the entire model to not require gradients by default
             model.requires_grad_(False)
             vision_tower.requires_grad_(False)
-            model.get_model().mm_projector.requires_grad_(False)
+            for name, param in model.named_parameters():
+                if "mm_projector" in name:
+                    param.requires_grad = False
             # Parse the mm_tunable_parts to decide which parts to unfreeze
             tunable_parts = model_args.mm_tunable_parts.split(",")
             if "mm_mlp_adapter" in tunable_parts:
-                for p in model.get_model().mm_projector.parameters():
-                    p.requires_grad = True
+                for name, param in model.named_parameters():
+                    if "mm_projector" in name:
+                        param.requires_grad = True
             if "mm_vision_tower" in tunable_parts:
                 for name, param in model.named_parameters():
                     if "vision_tower" in name:
@@ -2048,15 +1956,19 @@ def train(attn_implementation=None):
         trainable_params = sum(p.ds_numel if hasattr(p, "ds_numel") else p.numel() for p in model.parameters() if p.requires_grad)
         rank0_print(f"Total parameters: ~{total_params/1e6:.2f} MB)")
         rank0_print(f"Trainable parameters: ~{trainable_params/1e6:.2f} MB)")
-        if training_args.bits in [4, 8]:
-            model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
-
         model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_projector_lr = training_args.mm_projector_lr
         model.config.mm_vision_tower_lr = training_args.mm_vision_tower_lr
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
-        model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
+        if hasattr(model, "initialize_vision_tokenizer"):
+            model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
+
+    elif model_args.vision_tower is not None:
+        raise ValueError(
+            f"--vision_tower={model_args.vision_tower} is set but the loaded model has no vision tower. "
+            "Use a checkpoint that bundles vision modules."
+        )
 
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer
