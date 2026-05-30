@@ -1428,40 +1428,75 @@ class LazySupervisedDataset(Dataset):
         # print(video_file, end_time - start_time)
         return frames, msg
 
+    def _sample_ref(self, idx: int) -> str:
+        item = self.list_data_dict[idx]
+        if "video" in item:
+            return f"video={item['video']}"
+        if "image" in item:
+            v = item["image"]
+            return f"image={v[0] if isinstance(v, list) and len(v) == 1 else v}"
+        return "text-only"
+
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
-        # TODO: define number of retries somewhere else
-        num_base_retries = 2
-        num_final_retries = 300
+        n = len(self.list_data_dict)
+        last_error = None
+        tried = {i}  # 已尝试过的索引
 
-        # try the current sample first
-        for attempt_idx in range(num_base_retries):
+        def try_index(idx):
+            nonlocal last_error
             try:
-                sample = self._get_item(i)
+                sample = self._get_item(idx)
+                if idx != i:
+                    print(f"[Data fallback] requested idx={i} ({self._sample_ref(i)}) -> used idx={idx} ({self._sample_ref(idx)})", flush=True)  # 取错样本
                 return sample
             except Exception as e:
-                # sleep 1s in case it is a cloud disk issue
-                print(f"[Try #{attempt_idx}] Failed to fetch sample {i}. Exception:", e)
-                if attempt_idx != (num_base_retries -1):
-                    time.sleep(1)
+                last_error = e
+                print(
+                    f"[Data retry] failed idx={idx} ({self._sample_ref(idx)}) "
+                    f"(requested={i} ({self._sample_ref(i)})): {e}",
+                    flush=True,
+                )
+                return None
 
-        retry_step = 5
-        # try other samples, in case it is file corruption issue
-        for attempt_idx in range(num_base_retries+3):
-            try:
-                next_index = min(i + retry_step, len(self.list_data_dict) - 1)
-                # sample_idx = random.choice(range(len(self)))
-                sample = self._get_item(next_index)
+        for attempt in range(3):  # 同索引重试，应对 IO 抖动
+            sample = try_index(i)
+            if sample is not None:
                 return sample
-            except Exception as e:
-                # no need to sleep
-                print(f"[Try other #{attempt_idx}] Failed to fetch sample {next_index}. Exception:", e)
-                retry_step *= 2
+            if attempt < 2:
+                time.sleep(attempt + 1)  # 1s, 2s 退避
 
-        try:
-            sample = self._get_item(i)
+        retry_step = 1
+        for _ in range(5):  # 前后邻近样本，应对单条损坏
+            for offset in (retry_step, -retry_step):
+                j = i + offset
+                if 0 <= j < n and j not in tried:
+                    tried.add(j)
+                    sample = try_index(j)
+                    if sample is not None:
+                        return sample
+            retry_step = min(retry_step * 2, n)  # 步长 1,2,4,...
+
+        for _ in range(20):  # 随机换样本，避免成片坏数据
+            if len(tried) >= n:
+                break
+            j = random.randint(0, n - 1)
+            pick = 0
+            while j in tried and pick < 32:  # 尽量抽未试过的
+                j = random.randint(0, n - 1)
+                pick += 1
+            if j in tried:
+                continue
+            tried.add(j)
+            sample = try_index(j)
+            if sample is not None:
+                return sample
+
+        sample = try_index(i)  # 最后再试原索引
+        if sample is not None:
             return sample
-        except Exception as e:
-            raise e
+        raise RuntimeError(
+            f"Exhausted data retries for index {i} ({self._sample_ref(i)}). Last error: {last_error}"
+        ) from last_error
 
     def _get_item(self, i) -> Dict[str, torch.Tensor]:
         sources = self.list_data_dict[i]

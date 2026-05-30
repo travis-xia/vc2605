@@ -77,7 +77,7 @@ torchrun --nproc_per_node=${NUM_GPUS} \
     --vision_encode_type video_image \
     --sample_type dynamic_fps1 \
     --mm_local_num_frames 4 \
-    --verbose_logging True >> ./output_logs/stage3-video_sft/${MID_RUN_NAME}.log
+    --verbose_logging True 2>&1 | tee -a ./output_logs/stage3-video_sft/${MID_RUN_NAME}.log
 
 # --attn_implementation sdpa \
     # --torch_compile True \
