@@ -1,0 +1,37 @@
+datasets:
+  - json_path: annotations/image/LLaVA-ReCap-118K.json
+    sampling_strategy: all
+    data_root: https://huggingface.co/datasets/lmms-lab/LLaVA-ReCap-118K
+  - json_path: annotations/image/LLaVA-ReCap-CC3M.json
+    sampling_strategy: all
+    data_root: https://huggingface.co/datasets/lmms-lab/LLaVA-ReCap-CC3M
+  - json_path: annotations/image/LLaVA-ReCap-558K.json
+    sampling_strategy: all
+    data_root: https://huggingface.co/datasets/lmms-lab/LLaVA-ReCap-558K
+  - json_path: https://huggingface.co/datasets/lmms-lab/LLaVA-OneVision-Mid-Data/tree/main/evol_instruct/evol_instruct_processed.json
+    sampling_strategy: all
+  - json_path: annotations/video/webvid-fuse_caption_2m.json
+    sampling_strategy: all
+    data_root: https://github.com/m-bain/webvid
+  - json_path: annotations/video/caption_sharegemini_webvid_core100k_clean.json
+    sampling_strategy: all
+    data_root: https://github.com/m-bain/webvid
+  - json_path: annotations/video/caption_sharegemini_k400_223k.json
+    sampling_strategy: all
+    data_root: https://opendatalab.com/OpenMMLab/Kinetics-400
+  - json_path: annotations/image/ureader_tr_processed.json
+    data_root: https://huggingface.co/datasets/lmms-lab/LLaVA-OneVision-Mid-Data/tree/main/ureader_ur/
+    sampling_strategy: all
+  - json_path: annotations/image/synthdog_zh_processed.json
+    data_root: https://huggingface.co/datasets/lmms-lab/LLaVA-OneVision-Mid-Data/tree/main/synthdog_zh/synthdog_zh_images/
+    sampling_strategy: all
+  - json_path: annotations/image/synthdog_en_processed.json
+    data_root: https://huggingface.co/datasets/lmms-lab/LLaVA-OneVision-Mid-Data/tree/main/synthdog_en/synthdog_en_images/
+    sampling_strategy: all
+  - json_path: annotations/video/smit_caption_481k.json
+    sampling_strategy: all
+    data_root: http://moments.csail.mit.edu/spoken.html
+  - json_path: annotations/video/caption_sharegptvideo_300k-sharegptvideo-train_300k_302k.json
+    sampling_strategy: all
+    data_root: https://huggingface.co/datasets/ShareGPTVideo/train_video_and_instruction/tree/main/train_300k
+    video_read_type: img
