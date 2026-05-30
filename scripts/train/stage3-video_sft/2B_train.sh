@@ -4,6 +4,10 @@ export TORCH_CUDNN_USE_HEURISTIC_MODE_B=1
 
 export ACCELERATE_CPU_AFFINITY=1
 
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+
 
 DATA_VERSION="data/stage3_short-long_mix_sft.yaml"
 DATA_VERSION_CLEAN=$(basename "$DATA_VERSION")
@@ -50,7 +54,7 @@ torchrun --nproc_per_node=${NUM_GPUS} \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 8 \
-    --evaluation_strategy "no" \
+    --eval_strategy "no" \
     --save_strategy "steps" \
     --save_steps 1000 \
     --save_total_limit 10 \
@@ -65,8 +69,6 @@ torchrun --nproc_per_node=${NUM_GPUS} \
     --dataloader_num_workers 12 \
     --lazy_preprocess True \
     --report_to tensorboard \
-    --torch_compile True \
-    --torch_compile_backend "inductor" \
     --dataloader_drop_last True \
     --frames_upbound 512 \
     --frames_lowbound 64 \
@@ -76,4 +78,7 @@ torchrun --nproc_per_node=${NUM_GPUS} \
     --sample_type dynamic_fps1 \
     --mm_local_num_frames 4 \
     --verbose_logging True >> ./output_logs/stage3-video_sft/${MID_RUN_NAME}.log
-# You can delete the sdpa attn_implementation if you want to use flash attn
+
+# --attn_implementation sdpa \
+    # --torch_compile True \
+    # --torch_compile_backend "inductor" \
