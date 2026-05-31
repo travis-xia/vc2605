@@ -124,8 +124,21 @@ class Qwen2RotaryEmbedding(nn.Module):
         self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
         self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
 
-    def forward(self, x, seq_len=None):
-        # x: [bs, num_attention_heads, seq_len, head_size]
+    def forward(self, x, position_ids=None, seq_len=None):
+        # x: reference tensor for device/dtype
+        if position_ids is not None:
+            if seq_len is None:
+                seq_len = int(position_ids.max().item()) + 1
+            else:
+                seq_len = max(seq_len, int(position_ids.max().item()) + 1)
+            if seq_len > self.max_seq_len_cached:
+                self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+            cos = self.cos_cached[:seq_len].to(dtype=x.dtype, device=x.device)
+            sin = self.sin_cached[:seq_len].to(dtype=x.dtype, device=x.device)
+            return cos[position_ids], sin[position_ids]
+
+        if seq_len is None:
+            raise ValueError("Qwen2RotaryEmbedding requires position_ids or seq_len")
         if seq_len > self.max_seq_len_cached:
             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
 
@@ -165,8 +178,12 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
-    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    if position_ids is not None:
+        cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+        sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    else:
+        cos = cos.unsqueeze(unsqueeze_dim)
+        sin = sin.unsqueeze(unsqueeze_dim)
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -252,6 +269,7 @@ class Qwen2Attention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -268,17 +286,21 @@ class Qwen2Attention(nn.Module):
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            if self.layer_idx is None:
-                raise ValueError(
-                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."
-                )
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        if position_embeddings is None:
+            kv_seq_len = key_states.shape[-2]
+            if past_key_value is not None:
+                if self.layer_idx is None:
+                    raise ValueError(
+                        f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                        "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                        "with a layer index."
+                    )
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        else:
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids=None)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
@@ -352,6 +374,7 @@ class Qwen2FlashAttention2(Qwen2Attention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ):
         if "padding_mask" in kwargs:
@@ -371,21 +394,24 @@ class Qwen2FlashAttention2(Qwen2Attention):
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            if self.layer_idx is None:
-                raise ValueError(
-                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."
-                )
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        if position_embeddings is None:
+            kv_seq_len = key_states.shape[-2]
+            if past_key_value is not None:
+                if self.layer_idx is None:
+                    raise ValueError(
+                        f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                        "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                        "with a layer index."
+                    )
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
-        # Because the input can be padded, the absolute sequence length depends on the max position id.
-        rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
-        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
-
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+            # Because the input can be padded, the absolute sequence length depends on the max position id.
+            rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
+            cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        else:
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids=None)
 
         use_sliding_windows = (
             _flash_supports_window_size
@@ -645,6 +671,7 @@ class Qwen2SdpaAttention(Qwen2Attention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if output_attentions:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -659,6 +686,7 @@ class Qwen2SdpaAttention(Qwen2Attention):
                 past_key_value=past_key_value,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
+                position_embeddings=position_embeddings,
             )
 
         bsz, q_len, _ = hidden_states.size()
@@ -671,12 +699,15 @@ class Qwen2SdpaAttention(Qwen2Attention):
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        if position_embeddings is None:
+            kv_seq_len = key_states.shape[-2]
+            if past_key_value is not None:
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        else:
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids=None)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
@@ -747,6 +778,7 @@ class Qwen2DecoderLayer(nn.Module):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         if "padding_mask" in kwargs:
@@ -780,6 +812,7 @@ class Qwen2DecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            position_embeddings=position_embeddings,
         )
         hidden_states = residual + hidden_states
 
@@ -936,6 +969,12 @@ class Qwen2Model_Flash(Qwen2PreTrainedModel):
         )
         self._attn_implementation = config._attn_implementation
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+        self.rotary_emb = Qwen2RotaryEmbedding(
+            head_dim,
+            max_position_embeddings=config.max_position_embeddings,
+            base=config.rope_theta,
+        )
 
         self.gradient_checkpointing = False
 
@@ -1041,6 +1080,9 @@ class Qwen2Model_Flash(Qwen2PreTrainedModel):
 
         hidden_states = inputs_embeds
 
+        # shared RoPE embeddings for all decoder layers (transformers >= 4.46 style)
+        position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -1059,6 +1101,7 @@ class Qwen2Model_Flash(Qwen2PreTrainedModel):
                     past_key_values,
                     output_attentions,
                     use_cache,
+                    position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -1068,6 +1111,7 @@ class Qwen2Model_Flash(Qwen2PreTrainedModel):
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]
@@ -1098,6 +1142,7 @@ class Qwen2Model_Flash(Qwen2PreTrainedModel):
                         attention_mask=attention_mask,
                         labels = labels
                     )
+                    position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
                     
                     # process attention_mask again after updating 
                     if self._attn_implementation == "flash_attention_2":
@@ -1133,6 +1178,7 @@ class Qwen2Model_Flash(Qwen2PreTrainedModel):
                         new_position_ids.append(cur_position_ids)
                     assert idx == 0, idx
                     position_ids = torch.tensor(new_position_ids, dtype=torch.long).unsqueeze(0)
+                    position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
 
             #################
 

@@ -14,7 +14,7 @@ from lora_qkv import low_rank_qkv
 # - 若留空，将在加载模型后自动填充为均匀的默认值（512）
 # - 列表长度需要等于模型的 `num_hidden_layers`
 # =============================
-KV_LORA_RANKS = [256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
+KV_LORA_RANKS = [192, 192, 192,192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192]
 print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
 def load_model_and_tokenizer(args):
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("--cal-batch-size", type=int, default=16, help="Batch size for loading the calibration data.")
     parser.add_argument("--cal-max-seqlen", type=int, default=1024, help="Maximum sequence length for the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
-    parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
+    parser.add_argument("--ppl-eval-batch-size", type=int, default=16, help="Batch size for evaluating the perplexity.")
     parser.add_argument("--freqfold", type=str, default="4", help="Freqfold for removing RoPE, int or auto")
     parser.add_argument("--collapse", type=str, default="auto", help="Collapse for removing RoPE, int or auto")
     parser.add_argument("--qk-mqa-dim", type=int, default=128, help="")

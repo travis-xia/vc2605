@@ -22,7 +22,7 @@ def get_dataset(name: str) -> datasets.DatasetDict:
     logging.info(f"Loading dataset: {name}")
 
     ds_properties = {
-        "wikitext2": {"path": "wikitext", "config_name": "wikitext-2-raw-v1","disk_path":"/inspire/hdd/project/crosstemporalknowledge/xiacheng-240108120111/wikitext_dataset/",},
+        "wikitext2": {"path": "wikitext", "config_name": "wikitext-2-raw-v1","disk_path":"/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/wikitext_dataset",},
         "ptb": {"path": "ptb_text_only", "config_name": "penn_treebank"},
         "c4": {
             "path": "allenai/c4",
