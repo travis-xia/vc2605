@@ -14,13 +14,8 @@ from lora_qkv import low_rank_qkv
 # - 若留空，将在加载模型后自动填充为均匀的默认值（512）
 # - 列表长度需要等于模型的 `num_hidden_layers`
 # =============================
-KV_LORA_RANKS = [640, 448, 256, 384, 512, 384, 448, 384, 512, 448, 384, 448, 256, 384, 448, 448, 448, 384, 384, 448, 448, 384, 448, 448, 384, 384, 256, 256]
-# [512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512]
-# [512, 384, 384, 448, 512, 384, 448, 448, 512, 448, 384, 384, 384, 448, 448, 384, 448, 384, 448, 512, 448, 448, 448, 448, 448, 448, 384, 384]
-# [512, 512, 512, 512, 512,   512, 512, 512, 512, 512, 
-#         512, 512, 512, 512, 512,    512, 512, 512, 512, 512, 
-#         448, 448, 448, 448, 448,    448, 448, 448]
-
+KV_LORA_RANKS = [256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
+print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
 def load_model_and_tokenizer(args):
     # 使用AutoModel而不是AutoModelForCausalLM来加载VideoChat-Flash（VideoChat-Flash官方代码中的设置）
@@ -160,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("--cal-batch-size", type=int, default=16, help="Batch size for loading the calibration data.")
     parser.add_argument("--cal-max-seqlen", type=int, default=1024, help="Maximum sequence length for the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
-    parser.add_argument("--ppl-eval-batch-size", type=int, default=2, help="Batch size for evaluating the perplexity.")
+    parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
     parser.add_argument("--freqfold", type=str, default="4", help="Freqfold for removing RoPE, int or auto")
     parser.add_argument("--collapse", type=str, default="auto", help="Collapse for removing RoPE, int or auto")
     parser.add_argument("--qk-mqa-dim", type=int, default=128, help="")
@@ -170,4 +165,14 @@ if __name__ == "__main__":
     parser.add_argument("--deepseek-style", action='store_true', default=False, help="Use deepseek style modeling / configuration files from transformers.")
     args = parser.parse_args()
 
+    print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
+    print(f"Using QK MQA dim: {args.qk_mqa_dim}")
+    print(f"Using Q LoRA rank: {args.q_lora_rank}")
+    print(f"Using balance KV ratio: {args.balance_kv_ratio}")
+    print(f"Using use QKV norm: {args.use_qkv_norm}")
+    print(f"Using deepseek style: {args.deepseek_style}")
+    print(f"Using freqfold: {args.freqfold}")
+    print(f"Using collapse: {args.collapse}")
+    print(f"Using seed: {args.seed}")
+    print(f"Using ppl eval batch size: {args.ppl_eval_batch_size}")
     main(args)
