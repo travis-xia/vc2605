@@ -26,13 +26,13 @@ def partial_rope_videoppl(model, tokenizer, train_loader, test_loader, **kwargs)
                 collapse=collapse,
             ))
 
-        # if test_loader:
-        #     message = f"Evaluating partial-rope model's ppl, freqfold={freqfold}"
-        #     dataset_ppl = evaluate_video_ppl(model, tokenizer, test_loader, message)
-        #     print(f'Partial RoPE ppl, freqfold={freqfold}: {dataset_ppl:.4f}')
-        #     return model, dataset_ppl
-        # else:
-        #     return model, None
+        if test_loader:
+            message = f"Evaluating partial-rope model's ppl, freqfold={freqfold}"
+            dataset_ppl = evaluate_video_ppl(model, tokenizer, test_loader, message)
+            print(f'Partial RoPE ppl, freqfold={freqfold}: {dataset_ppl:.4f}')
+            return model, dataset_ppl
+        else:
+            return model, None
         return model, None
 
     if freqfold != "auto":
@@ -40,16 +40,19 @@ def partial_rope_videoppl(model, tokenizer, train_loader, test_loader, **kwargs)
         return partial_rope_freqfold(model, ori_qkv_outputs, test_loader, freqfold, collapse)[0]
     else:
         assert test_loader is not None, "test_loader is required for auto freqfold detection"
-        device = model.device
-        model_original = model.to("cpu")
 
         print(f"Auto freqfold detection...")
+        original_attns = [deepcopy(layer.self_attn) for layer in model.model.layers]
+
+        def restore_attns():
+            for layer, attn in zip(model.model.layers, original_attns):
+                setattr(layer, "self_attn", deepcopy(attn))
 
         best_freqfold = freqfold = collapse
         best_ppl = float("inf")
-        while freqfold <= model_original.config.head_dim // 2:
-            model = deepcopy(model_original)
-            model = model.to(device)
+        head_dim_limit = model.config.head_dim // 2
+        while freqfold <= head_dim_limit:
+            restore_attns()
             model, ppl = partial_rope_freqfold(model, ori_qkv_outputs, test_loader, freqfold, collapse)
             if ppl < best_ppl:
                 best_ppl = ppl
@@ -58,11 +61,10 @@ def partial_rope_videoppl(model, tokenizer, train_loader, test_loader, **kwargs)
             else:
                 break
 
-        model = deepcopy(model_original)
-        model = model.to(device)
+        restore_attns()
         model, _ = partial_rope_freqfold(model, ori_qkv_outputs, None, best_freqfold, collapse)
 
-        print(f"Best freqfold: {best_freqfold}")
+        print(f"Best freqfold: {best_freqfold} (ppl={best_ppl:.4f})")
 
         return model, best_freqfold
 

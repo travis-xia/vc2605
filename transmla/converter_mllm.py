@@ -15,6 +15,7 @@ from lora_qkv import low_rank_qkv
 # - 列表长度需要等于模型的 `num_hidden_layers`
 # =============================
 KV_LORA_RANKS = [192, 192, 192,192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192]
+KV_LORA_RANKS = [192] * 28
 print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
 def load_model_and_tokenizer(args):
