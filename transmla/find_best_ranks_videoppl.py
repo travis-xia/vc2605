@@ -4,19 +4,23 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 
 from modify_config import modify_config
-from utils import get_dataset, prepare_dataloader, prepare_video_dataloader, evaluate_video_ppl
+from utils import get_dataset, prepare_dataloader, prepare_video_dataloader, evaluate_video_ppl, resolve_device
 from partial_rope_videoppl import partial_rope_videoppl
 from lora_qkv_videoppl_find import low_rank_qkv_videoppl_find
 
 
 def load_model_and_tokenizer(args):
     # 使用AutoModel而不是AutoModelForCausalLM来加载VideoChat-Flash（VideoChat-Flash官方代码中的设置）
+    device = resolve_device(args.device)
+    dtype = torch.float16 if args.dtype == "fp16" else torch.bfloat16 if args.dtype == "bf16" else torch.float32
     model = AutoModel.from_pretrained(
         args.model_path,
-        torch_dtype=torch.float16 if args.dtype == "fp16" else torch.bfloat16 if args.dtype == "bf16" else torch.float32,
-        device_map=args.device,
+        torch_dtype=dtype,
         trust_remote_code=True,
+        low_cpu_mem_usage=True,
     )
+    model = model.to(device)
+    print(f"Model loaded on device: {device}")
     
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_path,
@@ -136,7 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--model-path", type=str, default="VideoChat-Flash-Qwen2_5-7B-1M_res224", help="Model to load")
     parser.add_argument("--save-results", type=str, default="search_results_videoppl", help="Directory to save search results.")
     parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16", "bf16"], default="bf16")
-    parser.add_argument("--device", type=str, help="Device to use.", default="auto")
+    parser.add_argument("--device", type=str, help="Single device, e.g. cuda:0 or cpu.", default="cuda:0")
     parser.add_argument("--cal-dataset", type=str, help="Dataset to calibrate and calculate perplexity on.", choices=["wikitext2", "ptb", "c4", "alpaca"], default="wikitext2")
     parser.add_argument("--cal-nsamples", type=int, help="Number of samples of the calibration data to load.", default=128)
     parser.add_argument("--cal-batch-size", type=int, default=16, help="Batch size for loading the calibration data.")

@@ -193,6 +193,27 @@ def sync_gpus() -> None:
     """Sync all GPUs to make sure all operations are finished, needed for correct benchmarking of latency/throughput."""
     for i in range(torch.cuda.device_count()):
         torch.cuda.synchronize(device=i)
+
+
+def resolve_device(device: str) -> torch.device:
+    """Resolve CLI device string to a single torch.device (no device_map auto / multi-GPU)."""
+    if device == "auto":
+        raise ValueError(
+            "device='auto' is not supported; pass an explicit device such as cuda:0 or cpu."
+        )
+    if device == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available")
+        return torch.device("cuda:0")
+    return torch.device(device)
+
+
+def get_model_device(model: torch.nn.Module) -> torch.device:
+    """Return the device where model weights live (single-device assumption)."""
+    if hasattr(model, "model") and hasattr(model.model, "embed_tokens"):
+        return model.model.embed_tokens.weight.device
+    return next(model.parameters()).device
+
         
 def map_tensors(obj, device: torch.device | str | None = None, dtype: torch.dtype | None = None):
     """Recursively map tensors to device and dtype."""
@@ -451,6 +472,50 @@ def load_video_dataset(jsonl_path: str, video_base_path: str = None):
     return data
 
 
+def _ensure_videochat_flash_on_path():
+    """
+    将仓库根目录加入 sys.path，并确保可 import VideoChat_Flash_Qwen2_5_2B_res448。
+
+    从 transmla/ 运行时，VideoChat 代码在上一级目录；集群上可通过环境变量
+    VC2605_ROOT 覆盖根路径。本地目录名常为 VideoChat-Flash-...（含连字符），
+    会注册为下划线包名以便 Python 导入。
+    """
+    import sys
+    import types
+    from pathlib import Path
+
+    env_root = os.environ.get("VC2605_ROOT")
+    if env_root:
+        project_root = Path(env_root).resolve()
+    else:
+        project_root = Path(__file__).resolve().parent.parent
+
+    root_str = str(project_root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+    pkg_name = "VideoChat_Flash_Qwen2_5_2B_res448"
+    if pkg_name in sys.modules:
+        return project_root
+
+    if (project_root / pkg_name).is_dir():
+        return project_root
+
+    hyphen_dir = project_root / "VideoChat-Flash-Qwen2_5-2B_res448"
+    if hyphen_dir.is_dir():
+        pkg = types.ModuleType(pkg_name)
+        pkg.__path__ = [str(hyphen_dir)]
+        pkg.__package__ = pkg_name
+        sys.modules[pkg_name] = pkg
+        return project_root
+
+    raise ImportError(
+        f"Cannot find VideoChat-Flash package under {project_root}. "
+        f"Expected '{pkg_name}' or 'VideoChat-Flash-Qwen2_5-2B_res448'. "
+        f"Set VC2605_ROOT if your repo root is elsewhere."
+    )
+
+
 def prepare_video_dataloader(
     jsonl_path: str,
     tokenizer,
@@ -473,10 +538,8 @@ def prepare_video_dataloader(
     Returns:
         DataLoader
     """
-    import sys
-    vc2605_root = "/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/vc2605"
-    if vc2605_root not in sys.path:
-        sys.path.insert(0, vc2605_root)
+
+    _ensure_videochat_flash_on_path()
 
     try:
         from VideoChat_Flash_Qwen2_5_2B_res448.conversation import conv_templates
@@ -572,7 +635,9 @@ def evaluate_video_ppl(
         平均困惑度
     """
     model.eval()
-    
+    device = get_model_device(model)
+    model_dtype = model.model.embed_tokens.weight.dtype if hasattr(model, "model") else next(model.parameters()).dtype
+
     loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=-100)  # IGNORE_INDEX
     nlls = []
     
@@ -588,10 +653,10 @@ def evaluate_video_ppl(
                 if hasattr(model.get_vision_tower(), 'image_processor'):
                     processed_video = model.get_vision_tower().image_processor.preprocess(
                         video_data, return_tensors="pt"
-                    )["pixel_values"].to(model.dtype).to(model.device)
+                    )["pixel_values"].to(model_dtype).to(device)
                 else:
                     # Fallback处理
-                    processed_video = video_data.to(model.dtype).to(model.device)
+                    processed_video = video_data.to(model_dtype).to(device)
                 
                 # 准备输入
                 images = [processed_video]
@@ -603,10 +668,10 @@ def evaluate_video_ppl(
                 # 模型前向传播
                 with torch.no_grad():
                     outputs = model(
-                        input_ids=input_ids.to(model.device),
+                        input_ids=input_ids.to(device),
                         images=images,
                         modalities=modalities,
-                        labels=labels.to(model.device),
+                        labels=labels.to(device),
                         use_cache=False,
                         return_dict=True
                     )

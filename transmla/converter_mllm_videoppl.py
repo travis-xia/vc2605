@@ -4,7 +4,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import torch
 
 from modify_config import modify_config
-from utils import get_dataset, prepare_dataloader, prepare_video_dataloader, evaluate_video_ppl
+from utils import get_dataset, prepare_dataloader, prepare_video_dataloader, evaluate_video_ppl, resolve_device
 from partial_rope_videoppl import partial_rope_videoppl
 from lora_qkv_videoppl import low_rank_qkv_videoppl
 
@@ -14,35 +14,25 @@ from lora_qkv_videoppl import low_rank_qkv_videoppl
 # - 若留空，将在加载模型后自动填充为均匀的默认值（512）
 # - 列表长度需要等于模型的 `num_hidden_layers`
 # =============================
-
-# KV_LORA_RANKS = [512, 512, 512, 512, 512,   512, 512, 512, 512, 512, 
-#         512, 512, 512, 512, 512,    512, 512, 512, 512, 512, 
-#         512, 512, 512, 512, 512,    512,512, 512]
-# KV_LORA_RANKS = [384, 384, 384, 384, 384,   384, 384, 384, 384, 384, 
-#         384, 384, 384, 384, 384,    384, 384, 384, 384, 384, 
-#         384, 384, 384, 384, 384,    384,384, 384]
-
-# KV_LORA_RANKS = [640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640, 640]
-# KV_LORA_RANKS = [404, 412, 420, 428, 436, 444, 452, 460, 468, 476, 484, 492, 500, 508, 516, 524, 532, 540, 548, 556, 564, 572, 580, 588, 596, 604, 612, 620]#linear up
-# KV_LORA_RANKS = [620, 612, 604, 596, 588, 580, 572, 564, 556, 548, 540, 532, 524, 516, 508, 500, 492, 484, 476, 468, 460, 452, 444, 436, 428, 420, 412, 404]#linear down
-KV_LORA_RANKS =[640, 256, 384, 448, 448, 384, 448, 384, 512, 512, 512, 384, 384, 512, 512, 384, 384, 384, 512, 512, 384, 256, 448, 384, 256, 384, 256, 256]
-# KV_LORA_RANKS = [640, 448, 256, 384, 512, 384, 448, 384, 512, 448, 384, 448, 256, 384, 448, 448, 448, 384, 384, 448, 448, 384, 448, 448, 384, 384, 256, 256]
-# KV_LORA_RANKS = [512, 512, 512, 512, 512,   512, 512, 512, 512, 512, 512, 512, 512, 512, 512,    512, 512, 512, 512, 512, 512, 512, 512, 512, 512,    512,512, 512]
-# KV_LORA_RANKS = [448, 448, 448, 448, 448,   448, 448, 448, 448, 448, 448, 448, 448, 448, 448,    448, 448, 448, 448, 448, 448, 448, 448, 448, 448,    448,448, 448]
-# KV_LORA_RANKS = [544, 544, 544, 544, 544,   544, 544, 544, 544, 544, 544, 544, 544, 544, 544,    544, 544, 544, 544, 544, 544, 544, 544, 544, 544,    544,544, 544]
-# KV_LORA_RANKS = [560, 560, 560, 560, 560,   560, 560, 560, 560, 560, 560, 560, 560, 560, 560,    560, 560, 560, 560, 560, 560, 560, 560, 560, 560,    560,560, 560]
+KV_LORA_RANKS = [192, 192, 192,192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192]
+KV_LORA_RANKS = [192] * 28
+print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
 
 print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
 def load_model_and_tokenizer(args):
     # 使用AutoModel而不是AutoModelForCausalLM来加载VideoChat-Flash（VideoChat-Flash官方代码中的设置）
+    device = resolve_device(args.device)
+    dtype = torch.float16 if args.dtype == "fp16" else torch.bfloat16 if args.dtype == "bf16" else torch.float32
     model = AutoModel.from_pretrained(
         args.model_path,
-        torch_dtype=torch.float16 if args.dtype == "fp16" else torch.bfloat16 if args.dtype == "bf16" else torch.float32,
-        device_map=args.device,
+        torch_dtype=dtype,
         trust_remote_code=True,
+        low_cpu_mem_usage=True,
     )
+    model = model.to(device)
+    print(f"Model loaded on device: {device}")
     
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_path,
@@ -169,14 +159,12 @@ def main(args):
 
     
 if __name__ == "__main__":
-    qkdim = 16
-    print("--qk-mqa-dim:",qkdim)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="VideoChat-Flash-Qwen2_5-7B-1M_res224", help="Model to load")
     parser.add_argument("--save-path", type=str, default="outputs", help="output path.")
     parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16", "bf16"], default="bf16")
-    parser.add_argument("--device", type=str, help="Device to use.", default="auto")
+    parser.add_argument("--device", type=str, help="Single device, e.g. cuda:0 or cpu.", default="cuda:0")
     parser.add_argument("--cal-dataset", type=str, help="Dataset to calibrate and calculate perplexity on.", choices=["wikitext2", "ptb", "c4", "alpaca"], default="wikitext2")
     parser.add_argument("--cal-nsamples", type=int, help="Number of samples of the calibration data to load.", default=128)
     parser.add_argument("--cal-batch-size", type=int, default=16, help="Batch size for loading the calibration data.")
@@ -185,7 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--ppl-eval-batch-size", type=int, default=16, help="Batch size for evaluating the perplexity.")
     parser.add_argument("--freqfold", type=str, default="4", help="Freqfold for removing RoPE, int or auto")
     parser.add_argument("--collapse", type=str, default="auto", help="Collapse for removing RoPE, int or auto")
-    parser.add_argument("--qk-mqa-dim", type=int, default=qkdim, help="")
+    parser.add_argument("--qk-mqa-dim", type=int, default=64, help="")
     parser.add_argument("--q-lora-rank", type=int, help="")
     parser.add_argument("--balance-kv-ratio", type=float, default=1, help="")
     parser.add_argument("--use-qkv-norm", action='store_true', default=False, help="")
@@ -204,5 +192,17 @@ if __name__ == "__main__":
                        help="Maximum number of video samples to evaluate")
     
     args = parser.parse_args()
+
+    print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
+    print(f"Using QK MQA dim: {args.qk_mqa_dim}")
+    print(f"Using Q LoRA rank: {args.q_lora_rank}")
+    print(f"Using balance KV ratio: {args.balance_kv_ratio}")
+    print(f"Using use QKV norm: {args.use_qkv_norm}")
+    print(f"Using deepseek style: {args.deepseek_style}")
+    print(f"Using freqfold: {args.freqfold}")
+    print(f"Using collapse: {args.collapse}")
+    print(f"Using seed: {args.seed}")
+    print(f"Using ppl eval batch size: {args.ppl_eval_batch_size}")
+
 
     main(args)
