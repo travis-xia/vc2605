@@ -193,10 +193,10 @@ if __name__ == "__main__":
     
     # 视频评估相关参数
     parser.add_argument("--video-eval-path", type=str, 
-                       default="/inspire/hdd/project/crosstemporalknowledge/xiacheng-240108120111/myflash0730/annotations/video/llava-video_2_3_m_academic_v0_1_cap_processed_3124_with_duration.jsonl",
+                       default="/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/vc2605/annotations/video/llava-video_2_3_m_academic_v0_1_cap_processed_3124_with_duration.jsonl",
                        help="Path to video evaluation JSONL file")
     parser.add_argument("--video-base-path", type=str, 
-                        default="/inspire/hdd/project/crosstemporalknowledge/xiacheng-240108120111/dataset/LLaVA-Video-178K",
+                        default="/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/dataset/LLaVA-Video-178K",
                        help="Base path for video files")
     parser.add_argument("--max-num-frames", type=int, default=512,
                        help="Maximum number of frames to extract from video")

@@ -473,15 +473,15 @@ def prepare_video_dataloader(
     Returns:
         DataLoader
     """
-    # Import here to avoid circular imports
     import sys
-    import importlib.util
-    
-    # Try to import from VideoChat-Flash directory
+    vc2605_root = "/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/vc2605"
+    if vc2605_root not in sys.path:
+        sys.path.insert(0, vc2605_root)
+
     try:
-        from VideoChat_Flash_Qwen2_5_7B_1M_res224.conversation import conv_templates
-        from VideoChat_Flash_Qwen2_5_7B_1M_res224.mm_utils import tokenizer_image_token, load_video
-        from VideoChat_Flash_Qwen2_5_7B_1M_res224.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
+        from VideoChat_Flash_Qwen2_5_2B_res448.conversation import conv_templates
+        from VideoChat_Flash_Qwen2_5_2B_res448.mm_utils import tokenizer_image_token, load_video
+        from VideoChat_Flash_Qwen2_5_2B_res448.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
     except ImportError as e:
         raise ImportError(f"Cannot import required modules for video processing: {e}")
     
