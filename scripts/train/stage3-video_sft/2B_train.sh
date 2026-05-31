@@ -7,6 +7,7 @@ export ACCELERATE_CPU_AFFINITY=1
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
+export AV_LOG_LEVEL=quiet  # 抑制 decord/pyav 的 [h264 @ ...] mmco 等 FFmpeg 刷屏
 
 
 DATA_VERSION="data/stage3_short-long_mix_sft.yaml"

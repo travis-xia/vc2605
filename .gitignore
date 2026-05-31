@@ -76,10 +76,10 @@ data_processing/
 
 
 
-VideoChat-Flash-*/
+# VideoChat-Flash-*/
+# transmla/
 
-
-
+*.safetensors
 
 
 
