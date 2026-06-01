@@ -1,7 +1,8 @@
-dataset_path: eval_data_jsons/Video-MME
+dataset_path: /inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/lmms-eval/Video-MME
 dataset_kwargs:
   token: True
-  cache_dir: your_eval_data_dir/VideoMME_0629
+  cache_dir: /inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/lmms-eval/Video-MME
+  video_dir: data
   video: True
   # From_YouTube: True
 task: videomme

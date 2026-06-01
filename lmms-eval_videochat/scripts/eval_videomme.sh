@@ -1,7 +1,16 @@
+#!/usr/bin/env bash
+# Video-MME 数据（集群路径，与 lmms_eval/tasks/videomme/videomme.yaml 一致）:
+#   annotation: .../Video-MME/videomme/test-00000-of-00001.parquet  (由 dataset_path 加载)
+#   cache_dir:  .../Video-MME
+#   视频目录:   .../Video-MME/data/{videoID}.mp4
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
 TASK=videomme
 MODEL_NAME=videochat_flash
 MAX_NUM_FRAMES=512
-CKPT_PATH=checkpoints/stage3-video_sft/VideoChat-Flash-Qwen2_5-7B-1M_res224_20260531_010207/
+CKPT_PATH=/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/vc2605/checkpoints/stage3-video_sft/VideoChat-Flash-Qwen2_5-7B-1M_res224_20260531_010207/
 
 echo $TASK
 TASK_SUFFIX="${TASK//,/_}"

@@ -91,7 +91,9 @@ with open(Path(__file__).parent / "videomme.yaml", "r") as f:
         # remove function definition since yaml load cannot handle it
         if "!function" not in line:
             safe_data.append(line)
-cache_name = yaml.safe_load("".join(safe_data))["dataset_kwargs"]["cache_dir"]
+_videomme_cfg = yaml.safe_load("".join(safe_data))["dataset_kwargs"]
+cache_name = _videomme_cfg["cache_dir"]
+video_subdir = _videomme_cfg.get("video_dir", "videos")
 
 
 def parse_subtitle_time(time_str):
@@ -180,7 +182,7 @@ def videomme_doc_to_visual(doc):
     # cache_dir = os.path.join(base_cache_dir, cache_name)
     cache_dir = cache_name
     video_path = doc["videoID"] + ".mp4"
-    video_path = os.path.join(cache_dir, "videos", video_path)
+    video_path = os.path.join(cache_dir, video_subdir, video_path)
     if os.path.exists(video_path):
         video_path = video_path
     elif os.path.exists(video_path.replace("mp4", "MP4")):
@@ -223,7 +225,7 @@ def videomme_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
     cache_dir = cache_name
     video_path = doc["videoID"] + ".mp4"
     subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
-    video_path = os.path.join(cache_dir, "videos", video_path)
+    video_path = os.path.join(cache_dir, video_subdir, video_path)
 
     subtitle = ""
     subtitles_prompt = ""
