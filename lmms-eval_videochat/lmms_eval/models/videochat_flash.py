@@ -77,9 +77,9 @@ class VideoChat_Flash(lmms):
         self._model = AutoModel.from_pretrained(
             pretrained, 
             trust_remote_code=True, 
-            attn_implementation="sdpa"
+            _attn_implementation="sdpa" # flash_attention_2
         ).half().cuda()
-        print(f"\n\nUsing attn_implementation: {self._model.config.attn_implementation}\n\n")
+        print(f"\n\nUsing attn_implementation: {self._model.config._attn_implementation}\n\n")
 
         # modify here to use video-level compress
         self.model.config.mm_llm_compress = False
