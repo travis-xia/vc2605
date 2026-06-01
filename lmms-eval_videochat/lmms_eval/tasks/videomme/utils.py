@@ -333,10 +333,11 @@ def videomme_process_results(doc, results):
     return {f"videomme_percetion_score": data_dict}
 
 
-def videomme_aggregate_results(results):
+def videomme_aggregate_results(results, args=None):
     """
     Args:
         results: a list of values returned by process_results
+        args: optional command line arguments, used to find output_path
     Returns:
         A score
     """
@@ -358,6 +359,14 @@ def videomme_aggregate_results(results):
         category2score[key]["answered"] += 1
         category2score[key]["correct"] += result["pred_answer"] == result["answer"]
 
+    stats = {
+        "video_type": {},
+        "category": {},
+        "sub_category": {},
+        "task_category": {},
+        "overall": 0.0
+    }
+
     for video_type in VIDEO_TYPE:
         total_correct = 0
         total_answered = 0
@@ -365,7 +374,13 @@ def videomme_aggregate_results(results):
             if video_type in k:
                 total_correct += v["correct"]
                 total_answered += v["answered"]
-        eval_logger.info(f"Evaluation on video Type: {video_type}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+        score = 100 * total_correct / total_answered if total_answered > 0 else 0
+        stats["video_type"][video_type] = {
+            "correct": total_correct,
+            "answered": total_answered,
+            "score": round(score, 2)
+        }
+        eval_logger.info(f"Evaluation on video Type: {video_type}: {score : .1f}%")
 
     for category in CATEGORIES:
         total_correct = 0
@@ -374,7 +389,13 @@ def videomme_aggregate_results(results):
             if category in k:
                 total_correct += v["correct"]
                 total_answered += v["answered"]
-        eval_logger.info(f"Evaluation on Categories: {category}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+        score = 100 * total_correct / total_answered if total_answered > 0 else 0
+        stats["category"][category] = {
+            "correct": total_correct,
+            "answered": total_answered,
+            "score": round(score, 2)
+        }
+        eval_logger.info(f"Evaluation on Categories: {category}: {score : .1f}%")
 
     for sub_cate in SUB_CATEGORIES:
         total_correct = 0
@@ -383,7 +404,13 @@ def videomme_aggregate_results(results):
             if sub_cate in k:
                 total_correct += v["correct"]
                 total_answered += v["answered"]
-        eval_logger.info(f"Evaluation on Video Sub Categories: {sub_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+        score = 100 * total_correct / total_answered if total_answered > 0 else 0
+        stats["sub_category"][sub_cate] = {
+            "correct": total_correct,
+            "answered": total_answered,
+            "score": round(score, 2)
+        }
+        eval_logger.info(f"Evaluation on Video Sub Categories: {sub_cate}: {score : .1f}%")
 
     for task_cate in TASK_CATEGORIES:
         total_correct = 0
@@ -392,14 +419,36 @@ def videomme_aggregate_results(results):
             if task_cate in k:
                 total_correct += v["correct"]
                 total_answered += v["answered"]
-        eval_logger.info(f"Evaluation on Task Categories: {task_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
-        print((f"Evaluation on Task Categories: {task_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%"))
+        score = 100 * total_correct / total_answered if total_answered > 0 else 0
+        stats["task_category"][task_cate] = {
+            "correct": total_correct,
+            "answered": total_answered,
+            "score": round(score, 2)
+        }
+        eval_logger.info(f"Evaluation on Task Categories: {task_cate}: {score : .1f}%")
+        print((f"Evaluation on Task Categories: {task_cate}: {score : .1f}%"))
 
     total_correct = 0
     total_answered = 0
     for k, v in category2score.items():
         total_correct += v["correct"]
         total_answered += v["answered"]
-    eval_logger.info(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
-    print(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
-    return 100 * total_correct / total_answered if total_answered > 0 else 0
+    overall_score = 100 * total_correct / total_answered if total_answered > 0 else 0
+    stats["overall"] = round(overall_score, 2)
+
+    eval_logger.info(f"Overall Performance: {overall_score : .1f}%")
+    print(f"Overall Performance: {overall_score : .1f}%")
+
+    # If args with output_path is provided, write out the detailed statistics to videomme_category_results.json
+    if args is not None and getattr(args, "output_path", None) is not None:
+        try:
+            output_dir = Path(args.output_path)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            stats_file = output_dir / "videomme_category_results.json"
+            with open(stats_file, "w", encoding="utf-8") as f:
+                json.dump(stats, f, indent=4, ensure_ascii=False)
+            eval_logger.info(f"Saved Video-MME sub-task category stats to {stats_file}")
+        except Exception as e:
+            eval_logger.error(f"Failed to save sub-task category stats: {e}")
+
+    return overall_score
