@@ -351,8 +351,8 @@ def print_results(args, results):
 
 if __name__ == "__main__":
     import os # NOTE
-    os.environ['HF_ENDPOINT'] = "https://hf-mirror.com"
-    os.environ['HF_DATASETS_OFFLINE'] = '1'
-    os.environ['HF_EVALUATE_OFFLINE'] = '1'
+    # os.environ['HF_ENDPOINT'] = "https://hf-mirror.com"
+    # os.environ['HF_DATASETS_OFFLINE'] = '1'
+    # os.environ['HF_EVALUATE_OFFLINE'] = '1'
     
     cli_evaluate()

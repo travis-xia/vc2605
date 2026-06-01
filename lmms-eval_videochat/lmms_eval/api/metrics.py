@@ -145,7 +145,7 @@ def acc_mutual_info_fn(items):  # This is a passthrough function
     return items
 
 
-exact_match = evaluate.load("exact_match")
+exact_match = None
 
 @register_metric(
     metric="exact_match",
@@ -154,6 +154,19 @@ exact_match = evaluate.load("exact_match")
     aggregation="mean",
 )
 def exact_match_fn(**kwargs):
+    global exact_match
+    if exact_match is None:
+        import os
+        # 优先尝试从本地加载 exact_match.py 脚本，避免在无网络/离线集群下卡死或连接报错
+        local_exact_match_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../exact_match.py"))
+        if os.path.exists(local_exact_match_path):
+            try:
+                exact_match = evaluate.load(local_exact_match_path)
+            except Exception as e:
+                eval_logger.warning(f"Failed to load exact_match from local path {local_exact_match_path}: {e}. Retrying with remote loading.")
+                exact_match = evaluate.load("exact_match")
+        else:
+            exact_match = evaluate.load("exact_match")
     return exact_match.compute(**kwargs)
 
 

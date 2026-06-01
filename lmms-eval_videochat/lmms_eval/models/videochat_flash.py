@@ -74,7 +74,12 @@ class VideoChat_Flash(lmms):
         self.max_num_frames = max_num_frames
 
         self._tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=True)
-        self._model = AutoModel.from_pretrained(pretrained, trust_remote_code=True).half().cuda()
+        self._model = AutoModel.from_pretrained(
+            pretrained, 
+            trust_remote_code=True, 
+            attn_implementation="sdpa"
+        ).half().cuda()
+        print(f"\n\nUsing attn_implementation: {self._model.config.attn_implementation}\n\n")
 
         # modify here to use video-level compress
         self.model.config.mm_llm_compress = False

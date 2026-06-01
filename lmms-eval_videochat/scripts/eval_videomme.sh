@@ -7,10 +7,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+
+# 解决单机多卡下 NCCL 握手死锁/卡死问题
+export NCCL_DEBUG=INFO
+export NCCL_IB_DISABLE=1
+export NCCL_SOCKET_IFNAME=lo
+
+
 TASK=videomme
 MODEL_NAME=videochat_flash
 MAX_NUM_FRAMES=512
-CKPT_PATH=/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/vc2605/checkpoints/stage3-video_sft/VideoChat-Flash-Qwen2_5-7B-1M_res224_20260531_010207/
+CKPT_PATH=/inspire/qb-ilm/project/traffic-congestion-management/xiacheng-240108120111/vc2605/checkpoints/stage3-video_sft/VideoChat-Flash-Qwen2_5-7B-1M_res224_20260531_010207
 
 echo $TASK
 TASK_SUFFIX="${TASK//,/_}"
