@@ -14,8 +14,8 @@ from lora_qkv import low_rank_qkv
 # - 若留空，将在加载模型后自动填充为均匀的默认值（512）
 # - 列表长度需要等于模型的 `num_hidden_layers`
 # =============================
-KV_LORA_RANKS = [192, 192, 192,192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192]
-KV_LORA_RANKS = [192] * 28
+KV_LORA_RANKS = [640, 448, 256, 384, 512, 384, 448, 384, 512, 448, 384, 448, 256, 384, 448, 448, 448, 384, 384, 448, 448, 384, 448, 448, 384, 384, 256, 256]
+
 print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
 def load_model_and_tokenizer(args):
@@ -176,4 +176,7 @@ if __name__ == "__main__":
     print(f"Using collapse: {args.collapse}")
     print(f"Using seed: {args.seed}")
     print(f"Using ppl eval batch size: {args.ppl_eval_batch_size}")
+
+
+    
     main(args)

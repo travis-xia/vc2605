@@ -5,4 +5,4 @@ save_path=outputs/VideoChat-Flash-Qwen2_5-7B-1M_res224_mla_2605
 
 python converter_mllm.py \
     --model-path $model_path \
-    --save-path $save_path --qk-mqa-dim 64
+    --save-path $save_path 

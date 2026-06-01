@@ -8,5 +8,4 @@ device=cuda:0
 python find_best_ranks_videoppl.py \
     --model-path $model_path \
     --save-results $save_results \
-    --device $device \
-    --qk-mqa-dim 64
+    --device $device 

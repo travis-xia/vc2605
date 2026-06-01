@@ -14,10 +14,7 @@ from lora_qkv_videoppl import low_rank_qkv_videoppl
 # - 若留空，将在加载模型后自动填充为均匀的默认值（512）
 # - 列表长度需要等于模型的 `num_hidden_layers`
 # =============================
-KV_LORA_RANKS = [192, 192, 192,192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192]
-KV_LORA_RANKS = [192] * 28
-print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
-
+KV_LORA_RANKS = [640, 448, 256, 384, 512, 384, 448, 384, 512, 448, 384, 448, 256, 384, 448, 448, 448, 384, 384, 448, 448, 384, 448, 448, 384, 384, 256, 256]
 
 print(f"Using KV LoRA ranks: {KV_LORA_RANKS}")
 
@@ -173,7 +170,7 @@ if __name__ == "__main__":
     parser.add_argument("--ppl-eval-batch-size", type=int, default=16, help="Batch size for evaluating the perplexity.")
     parser.add_argument("--freqfold", type=str, default="4", help="Freqfold for removing RoPE, int or auto")
     parser.add_argument("--collapse", type=str, default="auto", help="Collapse for removing RoPE, int or auto")
-    parser.add_argument("--qk-mqa-dim", type=int, default=64, help="")
+    parser.add_argument("--qk-mqa-dim", type=int, default=128, help="")
     parser.add_argument("--q-lora-rank", type=int, help="")
     parser.add_argument("--balance-kv-ratio", type=float, default=1, help="")
     parser.add_argument("--use-qkv-norm", action='store_true', default=False, help="")

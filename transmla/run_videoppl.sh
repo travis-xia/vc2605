@@ -8,5 +8,4 @@ device=cuda:0
 python converter_mllm_videoppl.py \
     --model-path $model_path \
     --save-path $save_path \
-    --device $device \
-    --qk-mqa-dim 64
+    --device $device 
