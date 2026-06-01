@@ -149,13 +149,13 @@ def main(args):
         },
     )
 
-#     # save model
-#     print(f"\nSaving model and tokenizer to {args.save_path}...")
-#     model.save_pretrained(os.path.join(args.save_path))
-#     tokenizer.save_pretrained(os.path.join(args.save_path))
+    # save model
+    print(f"\nSaving model and tokenizer to {args.save_path}...")
+    model.save_pretrained(os.path.join(args.save_path))
+    tokenizer.save_pretrained(os.path.join(args.save_path))
 
-#     # modify config
-#     modify_config(model, os.path.join(args.save_path, "config.json"), args)
+    # modify config
+    modify_config(model, os.path.join(args.save_path, "config.json"), args)
 
     
 if __name__ == "__main__":

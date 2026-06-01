@@ -474,7 +474,7 @@ def load_video_dataset(jsonl_path: str, video_base_path: str = None):
 
 def _ensure_videochat_flash_on_path():
     """
-    将仓库根目录加入 sys.path，并确保可 import VideoChat_Flash_Qwen2_5_2B_res448。
+    将仓库根目录加入 sys.path，并确保可 import VideoChat_Flash_Qwen2_5_7B_1M_res224。
 
     从 transmla/ 运行时，VideoChat 代码在上一级目录；集群上可通过环境变量
     VC2605_ROOT 覆盖根路径。本地目录名常为 VideoChat-Flash-...（含连字符），
@@ -494,14 +494,14 @@ def _ensure_videochat_flash_on_path():
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
 
-    pkg_name = "VideoChat_Flash_Qwen2_5_2B_res448"
+    pkg_name = "VideoChat_Flash_Qwen2_5_7B_1M_res224"
     if pkg_name in sys.modules:
         return project_root
 
     if (project_root / pkg_name).is_dir():
         return project_root
 
-    hyphen_dir = project_root / "VideoChat-Flash-Qwen2_5-2B_res448"
+    hyphen_dir = project_root / "VideoChat_Flash_Qwen2_5_7B_1M_res224"
     if hyphen_dir.is_dir():
         pkg = types.ModuleType(pkg_name)
         pkg.__path__ = [str(hyphen_dir)]
@@ -511,8 +511,8 @@ def _ensure_videochat_flash_on_path():
 
     raise ImportError(
         f"Cannot find VideoChat-Flash package under {project_root}. "
-        f"Expected '{pkg_name}' or 'VideoChat-Flash-Qwen2_5-2B_res448'. "
-        f"Set VC2605_ROOT if your repo root is elsewhere."
+        f"Expected '{pkg_name}' or 'VideoChat_Flash_Qwen2_5_7B_1M_res224'. "
+        f"Set ROOT if your repo root is elsewhere."
     )
 
 
@@ -542,9 +542,9 @@ def prepare_video_dataloader(
     _ensure_videochat_flash_on_path()
 
     try:
-        from VideoChat_Flash_Qwen2_5_2B_res448.conversation import conv_templates
-        from VideoChat_Flash_Qwen2_5_2B_res448.mm_utils import tokenizer_image_token, load_video
-        from VideoChat_Flash_Qwen2_5_2B_res448.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
+        from VideoChat_Flash_Qwen2_5_7B_1M_res224.conversation import conv_templates
+        from VideoChat_Flash_Qwen2_5_7B_1M_res224.mm_utils import tokenizer_image_token, load_video
+        from VideoChat_Flash_Qwen2_5_7B_1M_res224.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
     except ImportError as e:
         raise ImportError(f"Cannot import required modules for video processing: {e}")
     

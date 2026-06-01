@@ -81,5 +81,5 @@ data_processing/
 
 *.safetensors
 
-
+*.zip
 
