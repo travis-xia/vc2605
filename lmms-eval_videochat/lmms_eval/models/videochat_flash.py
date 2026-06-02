@@ -13,6 +13,11 @@ from accelerate import Accelerator, DistributedType, InitProcessGroupKwargs
 from accelerate.state import AcceleratorState
 from transformers import AutoTokenizer, AutoModel
 
+try:
+    from transformers import QuantizedCacheConfig
+except ImportError:
+    QuantizedCacheConfig = None
+
 from lmms_eval import utils
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
@@ -34,6 +39,11 @@ if version.parse(torch.__version__) >= version.parse("2.1.2"):
     best_fit_attn_implementation = "sdpa"
 else:
     best_fit_attn_implementation = "eager"
+
+# KV cache quantization — edit here manually
+KV_CACHE_QUANT = False  #  False   True
+KV_CACHE_QUANT_BITS = 8
+KV_CACHE_QUANT_BACKEND = "hqq"  # 8-bit 用 hqq；quanto 只支持 2/4-bit
 
 
 @register_model("videochat_flash")
@@ -77,7 +87,7 @@ class VideoChat_Flash(lmms):
         self._model = AutoModel.from_pretrained(
             pretrained, 
             trust_remote_code=True, 
-            _attn_implementation="sdpa" # flash_attention_2
+            _attn_implementation="flash_attention_2" # flash_attention_2  sdpa
         ).half().cuda()
         print(f"\n\nUsing attn_implementation: {self._model.config._attn_implementation}\n\n")
 
@@ -92,6 +102,13 @@ class VideoChat_Flash(lmms):
 
         self.batch_size_per_gpu = int(batch_size)
         self.use_cache = use_cache
+
+        if KV_CACHE_QUANT:
+            eval_logger.info(
+                f"KV cache quantization enabled: {KV_CACHE_QUANT_BITS}-bit ({KV_CACHE_QUANT_BACKEND})"
+            )
+            print(f"\n\nUsing KV cache quantization\n\n")
+
 
         assert self.batch_size_per_gpu == 1
 
@@ -199,6 +216,37 @@ class VideoChat_Flash(lmms):
                 new_list.append(j)
         return new_list
 
+    def _build_generation_config(self, gen_kwargs: dict) -> dict:
+        generation_config = {
+            "max_new_tokens": gen_kwargs["max_new_tokens"],
+            "temperature": gen_kwargs["temperature"],
+            "do_sample": gen_kwargs["do_sample"],
+            "top_p": gen_kwargs["top_p"],
+            "num_beams": gen_kwargs["num_beams"],
+        }
+        if not KV_CACHE_QUANT or not self.use_cache:
+            return generation_config
+
+        cache_config_kwargs = {
+            "backend": KV_CACHE_QUANT_BACKEND,
+            "nbits": KV_CACHE_QUANT_BITS,
+        }
+        if KV_CACHE_QUANT_BACKEND == "hqq":
+            cache_config_kwargs["axis_key"] = 1
+            cache_config_kwargs["axis_value"] = 1
+        elif KV_CACHE_QUANT_BACKEND == "quanto":
+            cache_config_kwargs["axis_key"] = 0
+            cache_config_kwargs["axis_value"] = 0
+
+        if QuantizedCacheConfig is not None:
+            cache_config = QuantizedCacheConfig(**cache_config_kwargs)
+        else:
+            cache_config = cache_config_kwargs
+
+        generation_config["cache_implementation"] = "quantized"
+        generation_config["cache_config"] = cache_config
+        return generation_config
+
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
 
@@ -270,12 +318,7 @@ class VideoChat_Flash(lmms):
                                 return_history=False,
                                 max_num_frames=self.max_num_frames,
                                 media_dict=media_dict,
-                                generation_config={
-                                    "max_new_tokens":gen_kwargs["max_new_tokens"],
-                                    "temperature":gen_kwargs["temperature"],
-                                    "do_sample":gen_kwargs["do_sample"],
-                                    "top_p":gen_kwargs["top_p"],
-                                    "num_beams":gen_kwargs["num_beams"]}
+                                generation_config=self._build_generation_config(gen_kwargs),
                                 )
                         
                         text_outputs.append(response)
